@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esports High Score Leaderboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 95%;
+            max-width: 800px;
+            padding: 2rem;
+            background-color: #161b22;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transition: all 0.5s ease-in-out;
+            border: 1px solid #30363d;
+        }
+
+        .header {
+            margin-bottom: 2rem;
+            color: #58a6ff;
+            font-weight: bold;
+        }
+        
+        .game-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #e6edf3;
+            margin-bottom: 1rem;
+            min-height: 3rem; /* Prevents layout shift */
+        }
+        
+        .leaderboard-list {
+            list-style: none;
+            padding: 0;
+            width: 100%;
+        }
+
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            margin-bottom: 0.75rem;
+            background-color: #0d1117;
+            border-radius: 0.75rem;
+            transition: all 0.3s ease-in-out;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .leaderboard-item:hover {
+            transform: translateY(-5px) scale(1.02);
+            background-color: #23282f;
+        }
+
+        .rank, .score {
+            font-weight: bold;
+            color: #e6edf3;
+            font-size: 1.25rem;
+        }
+        
+        .name, .class {
+            font-size: 1rem;
+            color: #8b949e;
+        }
+        
+        .rank-number {
+            font-size: 1.5rem;
+            width: 2rem;
+            text-align: left;
+        }
+
+        .player-info {
+            flex-grow: 1;
+            text-align: left;
+            margin-left: 1rem;
+        }
+        
+        .score-info {
+            width: 5rem;
+            text-align: right;
+        }
+
+        .loading {
+            font-size: 1.5rem;
+            color: #58a6ff;
+            animation: pulse 1.5s infinite ease-in-out;
+        }
+
+        .fa-spin {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 1s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="container">
+        <h1 class="header text-4xl">ESPORTS HIGH SCORE CHALLENGE</h1>
+        <div id="content">
+            <div class="loading">
+                <i class="fa-solid fa-spinner fa-spin"></i> Loading Leaderboards...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Set up the Google Sheets URL for your published CSV data.
+        // IMPORTANT: Replace the placeholder URL below with your actual published Google Sheet CSV URL.
+        const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRs1SVKxlwAwOtrqmTMbvCAN4sgwepKsLNBo1rAjv0YYav2dz1FVqKo6Be8stvCMynb6UoRUqFdytpH/pub?output=csv&single=true&gid=575450651';
+
+        let gameData = {};
+        let games = [];
+        let currentIndex = 0;
+        const rotationInterval = 10000; // Rotate every 10 seconds
+
+        // Fetch data from the Google Sheet
+        async function fetchGameData() {
+            try {
+                const response = await fetch(GOOGLE_SHEET_URL);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.text();
+                parseCSV(data);
+                if (games.length > 0) {
+                    displayLeaderboard();
+                    setInterval(rotateLeaderboard, rotationInterval);
+                } else {
+                    document.getElementById('content').innerHTML = `
+                        <div class="text-red-500">
+                            <i class="fa-solid fa-triangle-exclamation"></i> No game data found. Please ensure your Google Sheet is formatted correctly with a '#' header for each game.
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Failed to fetch data:', error);
+                document.getElementById('content').innerHTML = `
+                    <div class="text-red-500">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Failed to load leaderboard data. Please check the Google Sheet URL.
+                    </div>
+                `;
+            }
+        }
+
+        // Parse CSV data and organize it by game tab
+        function parseCSV(csvText) {
+            const lines = csvText.split('\n');
+            if (lines.length <= 1) return; // Not enough data
+            
+            const rawHeaders = lines[0].split(',').map(h => h.trim());
+            
+            let currentGameName = '';
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith('#')) {
+                    // This is a comment, a game title
+                    currentGameName = line.substring(1).trim();
+                    gameData[currentGameName] = [];
+                    games.push(currentGameName);
+                    continue;
+                }
+                
+                if (line === '') continue;
+
+                const values = line.split(',').map(v => v.trim());
+                if (currentGameName) {
+                    const entry = {};
+                    rawHeaders.forEach((header, index) => {
+                        entry[header] = values[index];
+                    });
+                    gameData[currentGameName].push(entry);
+                }
+            }
+        }
+
+        // Display the current leaderboard
+        function displayLeaderboard() {
+            const gameName = games[currentIndex];
+            const leaderboard = gameData[gameName];
+            
+            // Sort the leaderboard by score in descending order
+            leaderboard.sort((a, b) => {
+                const scoreA = parseFloat(a.Score) || 0;
+                const scoreB = parseFloat(b.Score) || 0;
+                return scoreB - scoreA;
+            });
+
+            let html = `
+                <h2 class="game-title">${gameName} Leaderboard</h2>
+                <ul class="leaderboard-list">
+            `;
+
+            // Display top 10 players or all players if less than 10
+            const maxPlayers = Math.min(10, leaderboard.length);
+            for (let i = 0; i < maxPlayers; i++) {
+                const player = leaderboard[i];
+                html += `
+                    <li class="leaderboard-item fade-in">
+                        <span class="rank-number">${i + 1}</span>
+                        <div class="player-info">
+                            <div class="name">${player['Player Name']}</div>
+                            <div class="class text-sm">${player.Class}</div>
+                        </div>
+                        <span class="score-info">${player.Score}</span>
+                    </li>
+                `;
+            }
+
+            html += '</ul>';
+            document.getElementById('content').innerHTML = html;
+        }
+
+        // Rotate to the next game's leaderboard
+        function rotateLeaderboard() {
+            currentIndex = (currentIndex + 1) % games.length;
+            displayLeaderboard();
+        }
+
+        // Initial fetch and setup
+        fetchGameData();
+    </script>
+</body>
+</html>
